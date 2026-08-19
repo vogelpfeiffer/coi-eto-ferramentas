@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gerador de Ocorrências - COI Energisa Tocantins</title>
 <style>
+
 :root{
   --navy-900:#0A1B2E;
   --navy-800:#0F2843;
@@ -273,6 +274,89 @@ footer{
   header .rel{width:100%;margin-left:0}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---------- seleção de mensagens ---------- */
+.chips{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  padding:10px 14px;
+  border-bottom:1px solid var(--line);
+  background:#F7F9FB;
+  align-items:center;
+}
+.chips .rot{
+  font-size:10.5px;
+  font-weight:700;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+  color:var(--ink-60);
+  margin-right:2px;
+}
+.chip{
+  font:inherit;
+  font-size:12px;
+  height:26px;
+  padding:0 11px;
+  border:1px solid var(--line);
+  background:#fff;
+  color:var(--ink-60);
+  border-radius:13px;
+  cursor:pointer;
+}
+.chip:hover{border-color:#A8B6C4}
+.chip[aria-pressed="true"]{
+  background:var(--navy-800);
+  border-color:var(--navy-800);
+  color:#fff;
+  font-weight:600;
+}
+
+/* ---------- abas de saída ---------- */
+.abas{
+  display:flex;
+  overflow-x:auto;
+  border-bottom:1px solid var(--line);
+  background:#F7F9FB;
+}
+.abas button{
+  font:inherit;
+  font-size:12px;
+  white-space:nowrap;
+  padding:8px 12px;
+  border:0;
+  border-bottom:2px solid transparent;
+  background:none;
+  color:var(--ink-60);
+  cursor:pointer;
+}
+.abas button:hover{background:#EDF1F5}
+.abas button[aria-selected="true"]{
+  color:var(--navy-800);
+  font-weight:700;
+  border-bottom-color:var(--orange);
+  background:#fff;
+}
+.abas .marca{
+  display:inline-block;
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--amber);
+  margin-left:6px;
+  vertical-align:middle;
+}
+.abas .marca.ok{background:var(--green)}
+#copiar-todas{
+  font:inherit;
+  font-size:11.5px;
+  background:none;
+  border:0;
+  color:var(--navy-700);
+  text-decoration:underline;
+  cursor:pointer;
+  margin-left:auto;
+  padding:0;
+}
 </style>
 </head>
 <body>
@@ -284,25 +368,26 @@ footer{
 </header>
 
 <main>
-  <nav class="card" aria-label="Padrões de ocorrência">
-    <h2>Padrões</h2>
-    <ul id="lista-padroes"></ul>
+  <nav class="card" aria-label="Eventos">
+    <h2>Evento</h2>
+    <ul id="lista-eventos"></ul>
   </nav>
 
   <section class="card">
     <div class="form-head">
-      <h2 id="titulo-padrao"></h2>
-      <p id="desc-padrao"></p>
+      <h2 id="titulo-evento"></h2>
+      <p id="desc-evento"></p>
     </div>
+    <div class="chips" id="chips"><span class="rot">Mensagens</span></div>
     <div class="grid" id="grid-campos"></div>
     <div class="barra">
       <button class="acao" id="limpar" type="button">Limpar campos</button>
-      <span class="dica">Alt+1..3 troca padrão &bull; Ctrl+Enter copia</span>
+      <span class="dica">Alt+1..4 troca evento &bull; Ctrl+Enter copia</span>
     </div>
   </section>
 
   <section class="card saida-wrap">
-    <h2>Mensagem</h2>
+    <div class="abas" id="abas" role="tablist"></div>
     <div id="saida" aria-live="polite"></div>
     <div class="status" id="status"></div>
     <button id="copiar" type="button">Copiar mensagem</button>
@@ -315,58 +400,120 @@ footer{
 "use strict";
 
 /* ====================================================================
-   CAMPOS COMPARTILHADOS - preservados ao trocar de padrão
+   FORMATADORES
    ==================================================================== */
-const CLIMA = ["Bom","Nublado","Chuva fraca","Chuva forte","Chuva com descargas atmosféricas","Vento forte","Tempo seco"];
-const CAUSAS = ["Descarga atmosférica","Vegetação","Vento forte","Animal","Terceiros","Falha de equipamento","Queimada","Objeto sobre a rede","Indeterminada"];
-
-const COMUNS = [
-  {k:"rdr",   rot:"RDR / RDU",  tipo:"text",  ph:"XXXXX"},
-  {k:"causa", rot:"Causa",      tipo:"lista", ph:"XXXXX", opcoes:CAUSAS},
-  {k:"equipe",rot:"Equipe",     tipo:"text",  ph:"XXXXX"},
-  {k:"clima", rot:"Clima",      tipo:"lista", ph:"XXXXX", opcoes:CLIMA},
-  {k:"obs",   rot:"Observação (opcional)", tipo:"text", ph:"Em branco: linha não é incluída", opcional:true, largo:true}
-];
-
-/* formatadores de data e hora para a saída */
-function FMT_DATAHORA(v){                 // 19/08/2026 08:32
+function FMT_DATAHORA(v){                 // 2026-08-19T08:32 -> 19/08/2026 08:32
   const a = v.split("T"); if (a.length < 2) return v;
   const d = a[0].split("-");
   return d[2] + "/" + d[1] + "/" + d[0] + " " + a[1].slice(0,5);
 }
-function FMT_DATAHORA_CURTA(v){           // 19/08/26 08:32
-  const a = v.split("T"); if (a.length < 2) return v;
-  const d = a[0].split("-");
-  return d[2] + "/" + d[1] + "/" + d[0].slice(2) + " " + a[1].slice(0,5);
-}
-
-const PROTECOES = ["50","51","50N","51N","50/51","50N/51N","67","67N","46","27","59","81","79 - bloqueio","Sobrecorrente instantânea","Sobrecorrente temporizada"];
 
 /* ====================================================================
-   PADRÕES
-   Template: texto livre + {chave} para os campos
+   LISTAS
    ==================================================================== */
-const PADROES = [
+const PROTECOES = ["50","51","50N","51N","50/51","50N/51N","67","67N","46","27","59","81","79 - bloqueio","Sobrecorrente instantânea","Sobrecorrente temporizada"];
+const CAUSAS    = ["Descarga atmosférica","Vegetação","Vento forte","Animal","Terceiros","Falha de equipamento","Queimada","Objeto sobre a rede","Indeterminada"];
+const CLIMAS    = ["Bom","Nublado","Chuva fraca","Chuva forte","Chuva com descargas atmosféricas","Vento forte","Tempo seco"];
+const ELOS      = ["1H","2H","3H","5H","8H","6K","10K","15K","25K","40K","65K","80K","100K","140K","200K"];
+const NIX       = ["Sim","Não","Parcial"];
+const RISCOS    = ["Condutor rompido ao solo","Poste abalroado","Poste danificado","Incêndio próximo à rede","Vazamento de óleo em transformador","Rede com risco de contato","Solicitação de equipe em campo","Acidente com terceiros"];
+
+/* ====================================================================
+   CAMPOS REUTILIZÁVEIS
+   Um campo declarado aqui é o mesmo dado em todas as mensagens do evento.
+   ==================================================================== */
+const F = {
+  ativo:        {k:"ativo",        rot:"Ativo",                  tipo:"text",     ph:"XXXXX"},
+  protecao:     {k:"protecao",     rot:"Proteção atuada",        tipo:"lista",    ph:"XXXXX", opcoes:PROTECOES},
+  icc:          {k:"icc",          rot:"ICC",                    tipo:"text",     ph:"XXXXX"},
+  fase:         {k:"fase",         rot:"Fase",                   tipo:"select",   ph:"XXXXX", opcoes:["A","B","C","AB","AC","BC","ABC"]},
+  eloret:       {k:"eloret",       rot:"Elo retirado",           tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
+  eloinst:      {k:"eloinst",      rot:"Elo instalado",          tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
+  risco:        {k:"risco",        rot:"Situação de risco",      tipo:"lista",    ph:"XXXXX", opcoes:RISCOS, largo:true},
+  rdr:          {k:"rdr",          rot:"RDR / RDU",              tipo:"text",     ph:"XXXXX"},
+  clima:        {k:"clima",        rot:"Clima",                  tipo:"lista",    ph:"XXXXX", opcoes:CLIMAS},
+  causa:        {k:"causa",        rot:"Causa",                  tipo:"lista",    ph:"XXXXX", opcoes:CAUSAS},
+  equipe:       {k:"equipe",       rot:"Equipe",                 tipo:"text",     ph:"XXXXX"},
+  polo:         {k:"polo",         rot:"Polo",                   tipo:"text",     ph:"XXXX"},
+  local:        {k:"local",        rot:"Local",                  tipo:"text",     ph:"XXXX"},
+  interv:       {k:"interv",       rot:"Interv / O.S.",          tipo:"text",     ph:"XXXX"},
+  inicio:       {k:"inicio",       rot:"Horário de início",      tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
+  parcial:      {k:"parcial",      rot:"Horário da parcial",     tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
+  fim:          {k:"fim",          rot:"Horário final",          tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
+  interrompidos:{k:"interrompidos",rot:"Clientes interrompidos", tipo:"text",     ph:"XXX"},
+  normalizados: {k:"normalizados", rot:"Clientes normalizados",  tipo:"text",     ph:"XXX"},
+  cidades:      {k:"cidades",      rot:"Cidades afetadas",       tipo:"text",     ph:"XXX", largo:true},
+  nix:          {k:"nix",          rot:"Nix assertivo",          tipo:"lista",    ph:"XXX", opcoes:NIX},
+  obs:          {k:"obs",          rot:"Observação (opcional)",  tipo:"text",     ph:"Em branco: a linha não é incluída", opcional:true, largo:true}
+};
+
+/* Blocos de mensagem reaproveitados entre eventos.
+   O trecho {elemento} é montado pelo próprio evento. */
+function divulgacao(linhasElemento, comProtecao){
+  let t = ["Ocorrência em Andamento Polo {polo}","","Local: {local}"]
+    .concat(linhasElemento)
+    .concat(["Interv/O.S: {interv}",
+             "Horário de Início: {inicio}",
+             "Quantidade de Clientes Interrompidos: {interrompidos} UC(s)"]);
+  if (comProtecao) t = t.concat(["ICC: {icc}","Proteções: {protecao}"]);
+  return t.concat(["Causa: {causa}",
+                   "Equipe: {equipe}",
+                   "Cidades afetadas: {cidades}",
+                   "Nix Assertivo: {nix}",
+                   "Observação: {obs}"]).join("\n");
+}
+function parcial(linhasElemento){
+  return ["Atualização de Ocorrência em Andamento Polo {polo}","","Local: {local}"]
+    .concat(linhasElemento)
+    .concat(["Interv/O.S: {interv}",
+             "Horário de Início: {inicio}",
+             "Horário da Parcial: {parcial}",
+             "Quantidade de clientes normalizados: {normalizados} UC(s)",
+             "Quantidade de Clientes Interrompidos: {interrompidos} UC(s)",
+             "Nix Assertivo: {nix}",
+             "OBS: {obs}"]).join("\n");
+}
+function final(linhasElemento){
+  return ["Atualização de Ocorrência Polo {polo}","","Local: {local}"]
+    .concat(linhasElemento)
+    .concat(["Interv/O.S: {interv}",
+             "Horário de Início: {inicio}",
+             "Horário Final: {fim}",
+             "Nix Assertivo: {nix}",
+             "Causa: {causa}",
+             "Observação: {obs}"]).join("\n");
+}
+
+const DIVULG_COMUNS = [F.polo,F.local,F.interv,F.inicio,F.interrompidos,F.cidades,F.nix];
+const ATUALIZ_COMUNS = [F.parcial,F.normalizados,F.fim];
+
+/* ====================================================================
+   EVENTOS
+   ==================================================================== */
+const EVENTOS = [
   {
     id:"desarme",
     nome:"Desarme de DJ / Religador",
     desc:"Atuação de proteção com desligamento de alimentador ou religador de linha.",
     campos:[
-      {k:"tipo",     rot:"Equipamento",       tipo:"select", ph:"RL/DJ", opcoes:["DJ","RL"]},
-      {k:"nome",     rot:"Ativo",        tipo:"text",   ph:"XXXXX"},
-      {k:"protecao", rot:"Proteção atuada",   tipo:"lista",  ph:"XXXXX", opcoes:PROTECOES},
-      {k:"icc",      rot:"ICC",               tipo:"text",   ph:"XXXXX"}
-    ],
-    template:[
-      "Desarme {tipo} {nome}",
-      "Proteção atuada {protecao}",
-      "ICC {icc}",
-      "Penalizando cargas da RDR/RDU {rdr}",
-      "Causa {causa}",
-      "Equipe {equipe}",
-      "Clima {clima}",
-      "OBS: {obs}"
-    ].join("\n")
+      {k:"tipo", rot:"Equipamento", tipo:"select", ph:"DJ/RL", opcoes:["DJ","RL"]},
+      F.ativo, F.protecao, F.icc, F.causa, F.equipe, F.clima, F.rdr
+    ].concat(DIVULG_COMUNS, ATUALIZ_COMUNS, [F.obs]),
+    saidas:[
+      {id:"interv", nome:"Intervenção", template:[
+        "Desarme {tipo} {ativo}",
+        "Proteção atuada {protecao}",
+        "ICC {icc}",
+        "Penalizando cargas da RDR/RDU {rdr}",
+        "Causa {causa}",
+        "Equipe {equipe}",
+        "Clima {clima}",
+        "OBS: {obs}"
+      ].join("\n")},
+      {id:"divulg",  nome:"Divulgação",  template:divulgacao(["Elemento desarmado: {tipo} {ativo}"], true)},
+      {id:"parcial", nome:"Parcial",     template:parcial(["Elemento desarmado: {tipo} {ativo}"])},
+      {id:"final",   nome:"Final",       template:final(["Elemento desarmado: {tipo} {ativo}"])}
+    ]
   },
   {
     id:"elo",
@@ -374,231 +521,183 @@ const PADROES = [
     desc:"Atuação de elo fusível em transformador ou chave de derivação.",
     campos:[
       {k:"tipo", rot:"Equipamento", tipo:"select", ph:"TR/CH", opcoes:["TR","CH"]},
-      {k:"nome", rot:"Ativo",  tipo:"text",   ph:"XXXXX"},
-      {k:"fase", rot:"Fase",        tipo:"select", ph:"XXXXX", opcoes:["A","B","C","AB","AC","BC","ABC"]},
-      {k:"eloret",  rot:"Elo retirado",  tipo:"lista", ph:"XXXXX", opcoes:["6K","10K","15K","25K","40K","65K","80K","100K","140K","200K"]},
-      {k:"eloinst", rot:"Elo instalado", tipo:"lista", ph:"XXXXX", opcoes:["6K","10K","15K","25K","40K","65K","80K","100K","140K","200K"]}
-    ],
-    derivados:{
-      artigo:v => v.tipo === "CH" ? "na" : (v.tipo === "TR" ? "no" : "no(a)")
-    },
-    template:[
-      "Queima de elo {artigo} {tipo} {nome}",
-      "Fase {fase} Elo Retirado {eloret} Elo Instalado {eloinst}",
-      "Penalizando cargas da RDR/RDU {rdr}",
-      "Causa {causa}",
-      "Equipe {equipe}",
-      "Clima {clima}",
-      "OBS: {obs}"
-    ].join("\n")
+      F.ativo, F.fase, F.eloret, F.eloinst, F.causa, F.equipe, F.clima, F.rdr
+    ].concat(DIVULG_COMUNS, ATUALIZ_COMUNS, [F.obs]),
+    derivados:{ artigo:v => v.tipo === "CH" ? "na" : (v.tipo === "TR" ? "no" : "no(a)") },
+    saidas:[
+      {id:"interv", nome:"Intervenção", template:[
+        "Queima de elo {artigo} {tipo} {ativo}",
+        "Fase {fase} Elo Retirado {eloret} Elo Instalado {eloinst}",
+        "Penalizando cargas da RDR/RDU {rdr}",
+        "Causa {causa}",
+        "Equipe {equipe}",
+        "Clima {clima}",
+        "OBS: {obs}"
+      ].join("\n")},
+      {id:"divulg",  nome:"Divulgação",  template:divulgacao(["Elemento desarmado: {tipo} {ativo}","Fase {fase} - elo retirado {eloret}, elo instalado {eloinst}"], false)},
+      {id:"parcial", nome:"Parcial",     template:parcial(["Elemento desarmado: {tipo} {ativo}"])},
+      {id:"final",   nome:"Final",       template:final(["Elemento desarmado: {tipo} {ativo}"])}
+    ]
   },
   {
     id:"emergencial",
     nome:"Abertura emergencial",
     desc:"Manobra emergencial por situação de risco em campo.",
     campos:[
-      {k:"tipo",  rot:"Equipamento",       tipo:"select", ph:"DJ/RL/TR/CH", opcoes:["DJ","RL","TR","CH"]},
-      {k:"nome",  rot:"Ativo",        tipo:"text",   ph:"XXXXX"},
-      {k:"risco", rot:"Situação de risco", tipo:"lista",  ph:"XXXXX", largo:true,
-       opcoes:["Condutor rompido ao solo","Poste abalroado","Poste danificado","Incêndio próximo à rede","Vazamento de óleo em transformador","Rede com risco de contato","Solicitação de equipe em campo","Acidente com terceiros"]}
-    ],
-    template:[
-      "Abertura emergencial {tipo} {nome}",
-      "Devido situação de risco: {risco}",
-      "Penalizando cargas da RDR/RDU {rdr}",
-      "Causa {causa}",
-      "Equipe {equipe}",
-      "Clima {clima}",
-      "OBS: {obs}"
-    ].join("\n")
+      {k:"tipo", rot:"Equipamento", tipo:"select", ph:"DJ/RL/TR/CH", opcoes:["DJ","RL","TR","CH"]},
+      F.ativo, F.risco, F.causa, F.equipe, F.clima, F.rdr
+    ].concat(DIVULG_COMUNS, ATUALIZ_COMUNS, [F.obs]),
+    saidas:[
+      {id:"interv", nome:"Intervenção", template:[
+        "Abertura emergencial {tipo} {ativo}",
+        "Devido situação de risco: {risco}",
+        "Penalizando cargas da RDR/RDU {rdr}",
+        "Causa {causa}",
+        "Equipe {equipe}",
+        "Clima {clima}",
+        "OBS: {obs}"
+      ].join("\n")},
+      {id:"divulg",  nome:"Divulgação",  template:divulgacao(["Elemento desarmado: {tipo} {ativo}","Situação de risco: {risco}"], false)},
+      {id:"parcial", nome:"Parcial",     template:parcial(["Elemento desarmado: {tipo} {ativo}"])},
+      {id:"final",   nome:"Final",       template:final(["Elemento desarmado: {tipo} {ativo}"])}
+    ]
   },
   {
     id:"cos",
     nome:"Ocorrência em subestação - COS",
     desc:"Comunicado de desarme de disjuntor de transformador de subestação.",
-    comuns:["causa","obs"],
     campos:[
-      {k:"regional",   rot:"Regional",            tipo:"lista",  ph:"XXXX",    opcoes:["Norte","Centro","Sul"]},
+      {k:"regional",   rot:"Regional",            tipo:"lista",  ph:"XXXX", opcoes:["Norte","Centro","Sul"]},
       {k:"dj",         rot:"DJ",                  tipo:"text",   ph:"XXX"},
       {k:"nivel",      rot:"Lado",                tipo:"select", ph:"Alta/Baixa", opcoes:["Alta","Baixa"]},
       {k:"trafo",      rot:"Trafo (kV)",          tipo:"text",   ph:"XXX/XXX"},
       {k:"se",         rot:"Subestação",          tipo:"text",   ph:"XXXX"},
       {k:"unidades",   rot:"Unidades afetadas",   tipo:"text",   ph:"X.XXX"},
-      {k:"protecao",   rot:"Proteção",            tipo:"lista",  ph:"XXX",     opcoes:PROTECOES},
+      F.protecao,
       {k:"hini",       rot:"Horário inicial",     tipo:"hora",   ph:"XX:XX:XX"},
       {k:"hfim",       rot:"Horário final",       tipo:"hora",   ph:"XX:XX:XX"},
-      {k:"municipios", rot:"Municípios afetados", tipo:"text",   ph:"XXX", largo:true}
+      F.causa,
+      {k:"municipios", rot:"Municípios afetados", tipo:"text",   ph:"XXX", largo:true},
+      F.obs
     ],
-    template:[
-      "Empresa: ETO",
-      "Abrangência: Regional {regional}",
-      "",
-      "Denominação: Desarme DJ {dj} ({nivel}) do Trafo {trafo} kV SE {se}.",
-      "Unidades Afetados: {unidades}",
-      "Proteção: {protecao}",
-      "Horário Inicial: {hini}",
-      "Horário final: {hfim}",
-      "Causa: {causa}",
-      "Municípios afetados: {municipios}",
-      "OBS: {obs}"
-    ].join("\n")
-  },
-  {
-    id:"distribuicao",
-    nome:"Ocorrência em andamento - Distribuição",
-    desc:"Comunicado de ocorrência em andamento na distribuição, por polo.",
-    comuns:["causa","equipe","obs"],
-    campos:[
-      {k:"polo",     rot:"Polo",                  tipo:"text",     ph:"XXXX"},
-      {k:"local",    rot:"Local",                 tipo:"text",     ph:"XXXX"},
-      {k:"elemento", rot:"Elemento desarmado",    tipo:"text",     ph:"XXXX"},
-      {k:"interv",   rot:"Interv / O.S.",         tipo:"text",     ph:"XXXX"},
-      {k:"inicio",   rot:"Horário de início",     tipo:"datahora", ph:"XX/XX/XX XX:XX",
-       fmt:FMT_DATAHORA_CURTA},
-      {k:"clientes", rot:"Clientes interrompidos",tipo:"text",     ph:"XXX"},
-      {k:"icc",      rot:"ICC",                   tipo:"text",     ph:"XXX"},
-      {k:"protecoes",rot:"Proteções",             tipo:"lista",    ph:"XXX", opcoes:PROTECOES},
-      {k:"cidades",  rot:"Cidades afetadas",      tipo:"text",     ph:"XXX", largo:true},
-      {k:"nix",      rot:"Nix assertivo",         tipo:"lista",    ph:"XXX", opcoes:["Sim","Não","Parcial"]}
-    ],
-    template:[
-      "Ocorrência em Andamento Polo {polo}",
-      "",
-      "Local: {local}",
-      "Elemento desarmado: {elemento}",
-      "Interv/O.S: {interv}",
-      "Horário de Início: {inicio}",
-      "Quantidade de Clientes Interrompidos: {clientes} UC(s)",
-      "ICC: {icc}",
-      "Proteções: {protecoes}",
-      "Causa: {causa}",
-      "Equipe: {equipe}",
-      "Cidades afetadas: {cidades}",
-      "Nix Assertivo: {nix}",
-      "Observação: {obs}"
-    ].join("\n")
-  },
-  {
-    id:"atualizacao",
-    nome:"Atualização de ocorrência - Distribuição",
-    desc:"Atualização parcial ou final de ocorrência em andamento na distribuição.",
-    comuns:["obs"],
-    campos:[
-      {k:"polo",         rot:"Polo",                     tipo:"text",     ph:"XXXX"},
-      {k:"local",        rot:"Local",                    tipo:"text",     ph:"XXX"},
-      {k:"elemento",     rot:"Elemento desarmado",       tipo:"text",     ph:"XXXX"},
-      {k:"interv",       rot:"Interv / O.S.",            tipo:"text",     ph:"XXXX"},
-      {k:"inicio",       rot:"Horário de início",        tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
-      {k:"parcial",      rot:"Horário da parcial",       tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
-      {k:"normalizados", rot:"Clientes normalizados",    tipo:"text",     ph:"XXX"},
-      {k:"interrompidos",rot:"Clientes interrompidos",   tipo:"text",     ph:"XXX"},
-      {k:"nix",          rot:"Nix assertivo",            tipo:"lista",    ph:"XXX", opcoes:["Sim","Não","Parcial"]}
-    ],
-    template:[
-      "Atualização de Ocorrência em Andamento Polo {polo}",
-      "",
-      "Local: {local}",
-      "Elemento desarmado: {elemento}",
-      "Interv/O.S: {interv}",
-      "Horário de Início: {inicio}",
-      "Horário da Parcial: {parcial}",
-      "Quantidade de clientes normalizados: {normalizados} UC(s)",
-      "Quantidade de Clientes Interrompidos: {interrompidos} UC(s)",
-      "Nix Assertivo: {nix}",
-      "OBS: {obs}"
-    ].join("\n")
-  },
-  {
-    id:"final",
-    nome:"Atualização final - Distribuição",
-    desc:"Encerramento de ocorrência na distribuição, com horário final e causa.",
-    comuns:["causa","obs"],
-    campos:[
-      {k:"polo",     rot:"Polo",              tipo:"text",     ph:"XXXX"},
-      {k:"local",    rot:"Local",             tipo:"text",     ph:"XXX"},
-      {k:"elemento", rot:"Elemento desarmado",tipo:"text",     ph:"XXXX"},
-      {k:"interv",   rot:"Interv / O.S.",     tipo:"text",     ph:"XXXX"},
-      {k:"inicio",   rot:"Horário de início", tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
-      {k:"fim",      rot:"Horário final",     tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
-      {k:"nix",      rot:"Nix assertivo",     tipo:"lista",    ph:"XXX", opcoes:["Sim","Não","Parcial"]}
-    ],
-    template:[
-      "Atualização de Ocorrência Polo {polo}",
-      "",
-      "Local: {local}",
-      "Elemento desarmado: {elemento}",
-      "Interv/O.S: {interv}",
-      "Horário de Início: {inicio}",
-      "Horário Final: {fim}",
-      "Nix Assertivo: {nix}",
-      "Causa: {causa}",
-      "Observação: {obs}"
-    ].join("\n")
+    saidas:[
+      {id:"cos", nome:"Comunicado COS", template:[
+        "Empresa: ETO",
+        "Abrangência: Regional {regional}",
+        "",
+        "Denominação: Desarme DJ {dj} ({nivel}) do Trafo {trafo} kV SE {se}.",
+        "Unidades Afetados: {unidades}",
+        "Proteção: {protecao}",
+        "Horário Inicial: {hini}",
+        "Horário final: {hfim}",
+        "Causa: {causa}",
+        "Municípios afetados: {municipios}",
+        "OBS: {obs}"
+      ].join("\n")}
+    ]
   }
 ];
-
-PADROES.forEach(p => {
-  const usa = p.comuns || COMUNS.map(c => c.k);
-  p.todos = p.campos.concat(COMUNS.filter(c => usa.indexOf(c.k) >= 0));
-});
 
 /* ====================================================================
    ESTADO
    ==================================================================== */
-const valores = {};              // valores por padrão: valores[idPadrao][chave]
-const compartilhado = {};        // rdr / causa / equipe / clima
-let atual = PADROES[0];
+const valores = {};      // valores[evento][campo]
+const marcadas = {};     // marcadas[evento] = [idsDeSaida]
+const abaAtiva = {};     // abaAtiva[evento] = idDeSaida
+EVENTOS.forEach(e => {
+  valores[e.id]  = {};
+  marcadas[e.id] = e.saidas.slice(0, Math.min(2, e.saidas.length)).map(s => s.id);
+  abaAtiva[e.id] = marcadas[e.id][0];
+});
+let atual = EVENTOS[0];
 
-PADROES.forEach(p => { valores[p.id] = {}; });
-const CHAVES_COMUNS = COMUNS.map(c => c.k);
-
-function get(k){
-  return (CHAVES_COMUNS.indexOf(k) >= 0 ? compartilhado[k] : valores[atual.id][k]) || "";
-}
-function set(k,v){
-  if (CHAVES_COMUNS.indexOf(k) >= 0) compartilhado[k] = v;
-  else valores[atual.id][k] = v;
-}
+const get = k => valores[atual.id][k] || "";
+const set = (k,v) => { valores[atual.id][k] = v; };
+const selecionadas = () => atual.saidas.filter(s => marcadas[atual.id].indexOf(s.id) >= 0);
+const saidaAtiva   = () => atual.saidas.find(s => s.id === abaAtiva[atual.id]) || selecionadas()[0];
 
 /* ====================================================================
-   NAVEGAÇÃO
+   NAVEGAÇÃO DE EVENTOS
    ==================================================================== */
-const lista = document.getElementById("lista-padroes");
-PADROES.forEach((p,i) => {
+const lista = document.getElementById("lista-eventos");
+EVENTOS.forEach((e,i) => {
   const li = document.createElement("li");
   const b  = document.createElement("button");
   b.type = "button";
-  b.innerHTML = '<span class="num">' + String(i+1).padStart(2,"0") + '</span><span>' + p.nome + '</span>';
-  b.onclick = () => selecionar(p);
+  b.innerHTML = '<span class="num">' + String(i+1).padStart(2,"0") + '</span><span>' + e.nome + '</span>';
+  b.onclick = () => selecionar(e);
   li.appendChild(b);
   lista.appendChild(li);
-  p._btn = b;
+  e._btn = b;
 });
 
-function selecionar(p){
-  atual = p;
-  PADROES.forEach(x => x._btn.setAttribute("aria-current", x === p ? "true" : "false"));
-  document.getElementById("titulo-padrao").textContent = p.nome;
-  document.getElementById("desc-padrao").textContent   = p.desc;
+function selecionar(e){
+  atual = e;
+  EVENTOS.forEach(x => x._btn.setAttribute("aria-current", x === e ? "true" : "false"));
+  document.getElementById("titulo-evento").textContent = e.nome;
+  document.getElementById("desc-evento").textContent   = e.desc;
+  montarChips();
+  montarCampos();
+  render();
+}
+
+/* ====================================================================
+   SELEÇÃO DE MENSAGENS
+   ==================================================================== */
+const chips = document.getElementById("chips");
+
+function montarChips(){
+  chips.querySelectorAll(".chip").forEach(c => c.remove());
+  chips.parentNode.querySelector(".chips").style.display = atual.saidas.length > 1 ? "flex" : "none";
+  atual.saidas.forEach(s => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.textContent = s.nome;
+    b.setAttribute("aria-pressed", marcadas[atual.id].indexOf(s.id) >= 0 ? "true" : "false");
+    b.onclick = () => alternar(s.id);
+    chips.appendChild(b);
+  });
+}
+
+function alternar(id){
+  const m = marcadas[atual.id];
+  const i = m.indexOf(id);
+  if (i >= 0){
+    if (m.length === 1) return;          // mantém ao menos uma mensagem
+    m.splice(i,1);
+    if (abaAtiva[atual.id] === id) abaAtiva[atual.id] = m[0];
+  } else {
+    // preserva a ordem de declaração das saídas
+    m.push(id);
+    m.sort((a,b) => atual.saidas.findIndex(s => s.id===a) - atual.saidas.findIndex(s => s.id===b));
+  }
+  montarChips();
   montarCampos();
   render();
 }
 
 /* ====================================================================
    FORMULÁRIO
+   Só aparecem os campos usados pelas mensagens marcadas.
    ==================================================================== */
 const grid = document.getElementById("grid-campos");
 const refs = {};
+
+function camposVisiveis(){
+  const sel = selecionadas();
+  return atual.campos.filter(c => sel.some(s => s.template.indexOf("{"+c.k+"}") >= 0));
+}
 
 function montarCampos(){
   grid.innerHTML = "";
   for (const k in refs) delete refs[k];
 
-  atual.todos.forEach(c => {
+  camposVisiveis().forEach(c => {
     const box = document.createElement("div");
     box.className = "campo" + (c.largo ? " wide" : "");
-
     const id  = "f_" + c.k;
+
     const lab = document.createElement("label");
     lab.textContent = c.rot;
     lab.setAttribute("for", id);
@@ -608,8 +707,7 @@ function montarCampos(){
     if (c.tipo === "select"){
       el = document.createElement("select");
       const vazio = document.createElement("option");
-      vazio.value = "";
-      vazio.textContent = "-- selecionar --";
+      vazio.value = ""; vazio.textContent = "-- selecionar --";
       el.appendChild(vazio);
       c.opcoes.forEach(o => {
         const op = document.createElement("option");
@@ -640,8 +738,9 @@ function montarCampos(){
 
     el.id = id;
     el.value = get(c.k);
-    el.addEventListener("input", () => { set(c.k, el.value.trim()); render(); });
-    el.addEventListener("change", () => { set(c.k, el.value.trim()); render(); });
+    const atualizar = () => { set(c.k, el.value.trim()); render(); };
+    el.addEventListener("input", atualizar);
+    el.addEventListener("change", atualizar);
 
     box.appendChild(el);
     grid.appendChild(box);
@@ -650,11 +749,11 @@ function montarCampos(){
 }
 
 /* ====================================================================
-   MONTAGEM DA MENSAGEM
+   MONTAGEM DAS MENSAGENS
    ==================================================================== */
 function contexto(){
   const v = {};
-  atual.todos.forEach(c => {
+  atual.campos.forEach(c => {
     const bruto = get(c.k);
     v[c.k] = (c.fmt && bruto) ? c.fmt(bruto) : bruto;
   });
@@ -664,50 +763,72 @@ function contexto(){
   return v;
 }
 
-function corpo(v){
-  // remove a linha inteira quando o campo opcional daquela linha está vazio
-  return atual.template.split("\n").filter(linha => {
+function corpo(saidaObj, v){
+  return saidaObj.template.split("\n").filter(linha => {
     const marcas = linha.match(/\{([a-zA-Z]+)\}/g) || [];
     return !marcas.some(m => {
       const chave = m.slice(1,-1);
-      const campo = atual.todos.find(c => c.k === chave);
+      const campo = atual.campos.find(c => c.k === chave);
       return campo && campo.opcional && !v[chave];
     });
   }).join("\n");
 }
 
-function segmentos(){
-  const v = contexto();
-  const partes = corpo(v).split(/(\{[a-zA-Z]+\})/g);
-  return partes.filter(s => s !== "").map(s => {
+function segmentos(saidaObj, v){
+  return corpo(saidaObj, v).split(/(\{[a-zA-Z]+\})/g).filter(s => s !== "").map(s => {
     const m = s.match(/^\{([a-zA-Z]+)\}$/);
     if (!m) return {tipo:"texto", txt:s};
     const chave = m[1];
-    const campo = atual.todos.find(c => c.k === chave);
-    if (!campo) return {tipo:"texto", txt:v[chave] || ""};      // derivado
-    return {
-      tipo: v[chave] ? "valor" : "pendente",
-      txt : v[chave] || campo.ph,
-      k   : chave,
-      rot : campo.rot
-    };
+    const campo = atual.campos.find(c => c.k === chave);
+    if (!campo) return {tipo:"texto", txt:v[chave] || ""};
+    return {tipo: v[chave] ? "valor" : "pendente", txt: v[chave] || campo.ph, k:chave, rot:campo.rot};
   });
 }
 
+const texto = (saidaObj, v) => segmentos(saidaObj, v).map(s => s.txt).join("");
+const pendentesDe = (saidaObj, v) => segmentos(saidaObj, v).filter(s => s.tipo === "pendente").length;
+
+/* ====================================================================
+   RENDERIZAÇÃO
+   ==================================================================== */
+const abas   = document.getElementById("abas");
 const saida  = document.getElementById("saida");
 const status = document.getElementById("status");
-const btnCopiar = document.getElementById("copiar");
+const btn    = document.getElementById("copiar");
 
 function render(){
-  const segs = segmentos();
-  saida.innerHTML = "";
-  let pendentes = 0;
+  const v   = contexto();
+  const sel = selecionadas();
+  if (sel.indexOf(saidaAtiva()) < 0) abaAtiva[atual.id] = sel[0].id;
+  const ativa = saidaAtiva();
 
-  segs.forEach(s => {
-    if (s.tipo === "texto"){
-      saida.appendChild(document.createTextNode(s.txt));
-      return;
-    }
+  // abas
+  abas.innerHTML = "";
+  sel.forEach(s => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role","tab");
+    b.setAttribute("aria-selected", s === ativa ? "true" : "false");
+    const p = pendentesDe(s, v);
+    b.innerHTML = s.nome + '<span class="marca' + (p === 0 ? " ok" : "") + '"></span>';
+    b.title = p === 0 ? "Completa" : p + " campo(s) pendente(s)";
+    b.onclick = () => { abaAtiva[atual.id] = s.id; render(); };
+    abas.appendChild(b);
+  });
+  if (sel.length > 1){
+    const t = document.createElement("button");
+    t.type = "button";
+    t.id = "copiar-todas";
+    t.textContent = "Copiar todas";
+    t.onclick = copiarTodas;
+    abas.appendChild(t);
+  }
+
+  // corpo da mensagem
+  saida.innerHTML = "";
+  let pend = 0;
+  segmentos(ativa, v).forEach(s => {
+    if (s.tipo === "texto"){ saida.appendChild(document.createTextNode(s.txt)); return; }
     const sp = document.createElement("span");
     sp.textContent = s.txt;
     if (s.tipo === "valor"){
@@ -716,64 +837,58 @@ function render(){
       sp.className = "pend";
       sp.title = "Preencher: " + s.rot;
       sp.onclick = () => { if (refs[s.k]) refs[s.k].focus(); };
-      pendentes++;
+      pend++;
     }
     saida.appendChild(sp);
   });
 
-  atual.todos.forEach(c => {
-    if (refs[c.k]) refs[c.k].classList.toggle("ok", !!get(c.k));
-  });
+  camposVisiveis().forEach(c => { if (refs[c.k]) refs[c.k].classList.toggle("ok", !!get(c.k)); });
 
-  status.innerHTML = pendentes === 0
-    ? '<span class="ok">COMPLETO</span> Todos os campos preenchidos.'
-    : '<span class="pt">' + pendentes + ' PENDENTE' + (pendentes>1?"S":"") + '</span> Clique no campo em destaque para preencher.';
+  status.innerHTML = pend === 0
+    ? '<span class="ok">COMPLETO</span> ' + ativa.nome + ' pronta para envio.'
+    : '<span class="pt">' + pend + ' PENDENTE' + (pend>1?"S":"") + '</span> Clique no campo em destaque para preencher.';
 
-  btnCopiar.classList.remove("feito");
-  btnCopiar.textContent = "Copiar mensagem";
-}
-
-function texto(){
-  return segmentos().map(s => s.txt).join("");
+  btn.classList.remove("feito");
+  btn.textContent = "Copiar " + ativa.nome.toLowerCase();
 }
 
 /* ====================================================================
    CÓPIA
    ==================================================================== */
-function copiar(){
-  const t = texto();
-  const feito = () => {
-    btnCopiar.classList.add("feito");
-    btnCopiar.textContent = "Mensagem copiada";
-    setTimeout(() => {
-      btnCopiar.classList.remove("feito");
-      btnCopiar.textContent = "Copiar mensagem";
-    }, 1600);
+function confirmar(rotulo){
+  btn.classList.add("feito");
+  btn.textContent = rotulo;
+  setTimeout(render, 1600);
+}
+function paraArea(t, rotulo){
+  const legado = () => {
+    const ta = document.createElement("textarea");
+    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); confirmar(rotulo); } catch(e){}
+    ta.remove();
   };
   if (navigator.clipboard && window.isSecureContext){
-    navigator.clipboard.writeText(t).then(feito).catch(() => legado(t, feito));
-  } else {
-    legado(t, feito);
-  }
+    navigator.clipboard.writeText(t).then(() => confirmar(rotulo)).catch(legado);
+  } else { legado(); }
 }
-function legado(t, ok){
-  const ta = document.createElement("textarea");
-  ta.value = t;
-  ta.style.position = "fixed";
-  ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  ta.select();
-  try { document.execCommand("copy"); ok(); } catch(e){ ta.remove(); return; }
-  ta.remove();
+function copiar(){
+  const v = contexto();
+  paraArea(texto(saidaAtiva(), v), "Mensagem copiada");
 }
-btnCopiar.onclick = copiar;
+function copiarTodas(){
+  const v = contexto();
+  const t = selecionadas().map(s => texto(s, v)).join("\n\n----------\n\n");
+  paraArea(t, "Todas copiadas");
+}
+btn.onclick = copiar;
 
 document.getElementById("limpar").onclick = () => {
-  atual.todos.forEach(c => set(c.k, ""));
+  valores[atual.id] = {};
   montarCampos();
   render();
-  const p = atual.todos[0];
-  if (refs[p.k]) refs[p.k].focus();
+  const vis = camposVisiveis();
+  if (vis.length && refs[vis[0].k]) refs[vis[0].k].focus();
 };
 
 /* ====================================================================
@@ -783,20 +898,19 @@ document.addEventListener("keydown", e => {
   if (e.ctrlKey && e.key === "Enter"){ e.preventDefault(); copiar(); return; }
   if (e.altKey && !e.ctrlKey){
     const n = parseInt(e.key, 10);
-    if (n >= 1 && n <= PADROES.length){ e.preventDefault(); selecionar(PADROES[n-1]); }
+    if (n >= 1 && n <= EVENTOS.length){ e.preventDefault(); selecionar(EVENTOS[n-1]); }
   }
 });
 
 function relogio(){
-  const d = new Date();
-  const p = n => String(n).padStart(2,"0");
+  const d = new Date(), p = n => String(n).padStart(2,"0");
   document.getElementById("relogio").textContent =
     p(d.getDate()) + "/" + p(d.getMonth()+1) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
 }
 relogio();
 setInterval(relogio, 20000);
 
-selecionar(PADROES[0]);
+selecionar(EVENTOS[0]);
 </script>
 </body>
 </html>
