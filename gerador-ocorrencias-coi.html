@@ -216,7 +216,8 @@ button.acao:hover{background:#EDF1F5}
   word-break:break-word;
   border-bottom:1px solid var(--line);
 }
-#saida .val{color:#FFB05E;font-weight:600}
+#saida .fixo{color:#EAF2FA;font-weight:700}
+#saida .val{color:#FFB05E;font-weight:500}
 #saida .pend{
   color:#63788E;
   border-bottom:1px dashed #3C566E;
@@ -346,7 +347,7 @@ footer{
   vertical-align:middle;
 }
 .abas .marca.ok{background:var(--green)}
-#copiar-todas{
+.link-saida{
   font:inherit;
   font-size:11.5px;
   background:none;
@@ -357,6 +358,7 @@ footer{
   margin-left:auto;
   padding:0;
 }
+.status .link-saida{margin-left:auto}
 </style>
 </head>
 <body>
@@ -786,6 +788,32 @@ function segmentos(saidaObj, v){
 }
 
 const texto = (saidaObj, v) => segmentos(saidaObj, v).map(s => s.txt).join("");
+
+const esc = t => t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+/* Texto fixo em negrito; valores preenchidos em peso normal. */
+function html(saidaObj, v){
+  return segmentos(saidaObj, v).map(s => {
+    const t = esc(s.txt).replace(/\n/g,"<br>");
+    return s.tipo === "texto" ? "<b>" + t + "</b>" : t;
+  }).join("");
+}
+function envelope(corpoHtml){
+  return '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;white-space:pre-wrap">'
+       + corpoHtml + '</div>';
+}
+
+/* WhatsApp não aceita colagem formatada: usa marcação por asteriscos. */
+function whatsapp(saidaObj, v){
+  return segmentos(saidaObj, v).map(s => {
+    if (s.tipo !== "texto") return s.txt;
+    return s.txt.split("\n").map(linha => {
+      const m = linha.match(/^(\s*)([\s\S]*?)(\s*)$/);
+      if (!m || !m[2] || !/[0-9A-Za-zÀ-ÿ]/.test(m[2])) return linha;
+      return m[1] + "*" + m[2] + "*" + m[3];
+    }).join("\n");
+  }).join("");
+}
 const pendentesDe = (saidaObj, v) => segmentos(saidaObj, v).filter(s => s.tipo === "pendente").length;
 
 /* ====================================================================
@@ -818,7 +846,7 @@ function render(){
   if (sel.length > 1){
     const t = document.createElement("button");
     t.type = "button";
-    t.id = "copiar-todas";
+    t.className = "link-saida";
     t.textContent = "Copiar todas";
     t.onclick = copiarTodas;
     abas.appendChild(t);
@@ -828,8 +856,13 @@ function render(){
   saida.innerHTML = "";
   let pend = 0;
   segmentos(ativa, v).forEach(s => {
-    if (s.tipo === "texto"){ saida.appendChild(document.createTextNode(s.txt)); return; }
     const sp = document.createElement("span");
+    if (s.tipo === "texto"){
+      sp.className = "fixo";
+      sp.textContent = s.txt;
+      saida.appendChild(sp);
+      return;
+    }
     sp.textContent = s.txt;
     if (s.tipo === "valor"){
       sp.className = "val";
@@ -848,6 +881,14 @@ function render(){
     ? '<span class="ok">COMPLETO</span> ' + ativa.nome + ' pronta para envio.'
     : '<span class="pt">' + pend + ' PENDENTE' + (pend>1?"S":"") + '</span> Clique no campo em destaque para preencher.';
 
+  const wpp = document.createElement("button");
+  wpp.type = "button";
+  wpp.className = "link-saida";
+  wpp.textContent = "Copiar para WhatsApp";
+  wpp.title = "Aplica asteriscos no lugar do negrito";
+  wpp.onclick = copiarWhatsapp;
+  status.appendChild(wpp);
+
   btn.classList.remove("feito");
   btn.textContent = "Copiar " + ativa.nome.toLowerCase();
 }
@@ -860,7 +901,37 @@ function confirmar(rotulo){
   btn.textContent = rotulo;
   setTimeout(render, 1600);
 }
-function paraArea(t, rotulo){
+
+/* 1) area de transferencia rica (Teams, Outlook, Word)
+   2) contenteditable + execCommand, quando a API rica nao existe
+   3) texto puro, ultimo recurso */
+function copiarRico(corpoHtml, plano, rotulo){
+  const doc = envelope(corpoHtml);
+  const viaSelecao = () => {
+    const d = document.createElement("div");
+    d.contentEditable = "true";
+    d.innerHTML = doc;
+    d.style.position = "fixed"; d.style.left = "-9999px"; d.style.top = "0";
+    document.body.appendChild(d);
+    const r = document.createRange(); r.selectNodeContents(d);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch(e){}
+    sel.removeAllRanges(); d.remove();
+    if (ok) confirmar(rotulo); else copiarPlano(plano, rotulo);
+  };
+  if (navigator.clipboard && window.ClipboardItem && window.isSecureContext){
+    try {
+      navigator.clipboard.write([new ClipboardItem({
+        "text/html":  new Blob([doc],   {type:"text/html"}),
+        "text/plain": new Blob([plano], {type:"text/plain"})
+      })]).then(() => confirmar(rotulo)).catch(viaSelecao);
+      return;
+    } catch(e){ viaSelecao(); return; }
+  }
+  viaSelecao();
+}
+function copiarPlano(t, rotulo){
   const legado = () => {
     const ta = document.createElement("textarea");
     ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
@@ -873,13 +944,18 @@ function paraArea(t, rotulo){
   } else { legado(); }
 }
 function copiar(){
-  const v = contexto();
-  paraArea(texto(saidaAtiva(), v), "Mensagem copiada");
+  const v = contexto(), a = saidaAtiva();
+  copiarRico(html(a, v), texto(a, v), "Mensagem copiada");
 }
 function copiarTodas(){
+  const v = contexto(), sel = selecionadas();
+  copiarRico(sel.map(s => html(s, v)).join("<br><br>----------<br><br>"),
+             sel.map(s => texto(s, v)).join("\n\n----------\n\n"),
+             "Todas copiadas");
+}
+function copiarWhatsapp(){
   const v = contexto();
-  const t = selecionadas().map(s => texto(s, v)).join("\n\n----------\n\n");
-  paraArea(t, "Todas copiadas");
+  copiarPlano(whatsapp(saidaAtiva(), v), "Copiada para WhatsApp");
 }
 btn.onclick = copiar;
 
