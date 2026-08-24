@@ -418,7 +418,6 @@ const CAUSAS    = ["Descarga atmosférica","Vegetação","Vento forte","Animal",
 const CLIMAS    = ["Bom","Nublado","Chuva fraca","Chuva forte","Chuva com descargas atmosféricas","Vento forte","Tempo seco"];
 const ELOS      = ["1H","2H","3H","5H","8H","6K","10K","15K","25K","40K","65K","80K","100K","140K","200K"];
 const NIX       = ["Sim","Não","Parcial"];
-const ABRANGENCIA = ["Parcial","Total"];
 const RISCOS    = ["Condutor rompido ao solo","Poste abalroado","Poste danificado","Incêndio próximo à rede","Vazamento de óleo em transformador","Rede com risco de contato","Solicitação de equipe em campo","Acidente com terceiros"];
 
 /* ====================================================================
@@ -434,7 +433,7 @@ const F = {
   eloinst:      {k:"eloinst",      rot:"Elo instalado",          tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
   risco:        {k:"risco",        rot:"Situação de risco",      tipo:"lista",    ph:"XXXXX", opcoes:RISCOS, largo:true},
   rdr:          {k:"rdr",          rot:"RDR / RDU",              tipo:"text",     ph:"XXXXX"},
-  abrangencia:  {k:"abrangencia",  rot:"Abrangência",            tipo:"select",   ph:"", opcoes:ABRANGENCIA, controla:"rdr"},
+  localidade:   {k:"localidade",   rot:"Localidade",             tipo:"text",     ph:"XXXXX"},
   clima:        {k:"clima",        rot:"Clima",                  tipo:"lista",    ph:"XXXXX", opcoes:CLIMAS},
   causa:        {k:"causa",        rot:"Causa",                  tipo:"lista",    ph:"XXXXX", opcoes:CAUSAS},
   equipe:       {k:"equipe",       rot:"Equipe",                 tipo:"text",     ph:"XXXXX"},
@@ -446,21 +445,12 @@ const F = {
   fim:          {k:"fim",          rot:"Horário final",          tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
   interrompidos:{k:"interrompidos",rot:"Clientes interrompidos", tipo:"text",     ph:"XXX"},
   normalizados: {k:"normalizados", rot:"Clientes normalizados",  tipo:"text",     ph:"XXX"},
-  afetacidades: {k:"afetacidades", rot:"Afeta cidades?",         tipo:"select",   ph:"", opcoes:["Sim","Não"], controla:"cidades"},
-  cidades:      {k:"cidades",      rot:"Cidades afetadas",       tipo:"text",     ph:"XXX", largo:true,
-                 cond:v => v.afetacidades === "Sim"},
+  cidades:      {k:"cidades",      rot:"Cidades afetadas",       tipo:"text",     ph:"XXX", largo:true},
   nix:          {k:"nix",          rot:"Nix assertivo",          tipo:"lista",    ph:"XXX", opcoes:NIX,
                  cond:v => v.tipo !== "TR"},
   situacao:     {k:"situacao",     rot:"Situação",               tipo:"select",   ph:"XXXXX", opcoes:["Aberto","Desarmado"]},
   obs:          {k:"obs",          rot:"Observação",             tipo:"text",     ph:"XXXXX", largo:true}
 };
-
-/* Deixa explicito se a RDR/RDU foi penalizada por inteiro ou apenas em parte. */
-function CARGAS(v){
-  if (v.abrangencia === "Parcial") return "parte das cargas";
-  if (v.abrangencia === "Total")   return "todas as cargas";
-  return "cargas";
-}
 
 /* Blocos de mensagem reaproveitados entre eventos.
    O trecho {elemento} é montado pelo próprio evento. */
@@ -499,7 +489,7 @@ function final(linhasElemento){
              "Observação: {obs}"]).join("\n");
 }
 
-const DIVULG_COMUNS = [F.polo,F.local,F.interv,F.inicio,F.interrompidos,F.afetacidades,F.cidades,F.nix];
+const DIVULG_COMUNS = [F.polo,F.local,F.interv,F.inicio,F.interrompidos,F.cidades,F.nix];
 const ATUALIZ_COMUNS = [F.parcial,F.normalizados,F.fim];
 
 /* ====================================================================
@@ -508,20 +498,19 @@ const ATUALIZ_COMUNS = [F.parcial,F.normalizados,F.fim];
 const EVENTOS = [
   {
     id:"desarme",
-    derivados:{ cargas:CARGAS },
     nome:"Desarme de DJ / Religador",
     desc:"Atuação de proteção com desligamento de alimentador ou religador de linha.",
     campos:[
       {k:"tipo", rot:"Equipamento", tipo:"select", ph:"DJ/RL", opcoes:["DJ","RL"], gatilho:true},
-      F.ativo, F.protecao, F.icc, F.causa, F.equipe, F.clima, F.rdr, F.abrangencia
+      F.ativo, F.protecao, F.icc, F.causa, F.equipe, F.clima, F.rdr, F.localidade
     ].concat(DIVULG_COMUNS, ATUALIZ_COMUNS, [F.obs]),
     saidas:[
       {id:"interv", nome:"Intervenção", template:[
         "!Desarme {tipo} {ativo}",
         "Proteção atuada {protecao}",
         "ICC {icc}",
-        "Penalizando {cargas} da RDR/RDU {rdr}",
-        "Localidades afetadas {cidades}",
+        "Penalizando cargas da RDR/RDU {rdr}",
+        "Localidade {localidade}",
         "Causa {causa}",
         "Equipe {equipe}",
         "Clima {clima}",
@@ -538,15 +527,15 @@ const EVENTOS = [
     desc:"Atuação de elo fusível em transformador ou chave de derivação.",
     campos:[
       {k:"tipo", rot:"Equipamento", tipo:"select", ph:"TR/CH", opcoes:["TR","CH"], gatilho:true},
-      F.ativo, F.fase, F.eloret, F.eloinst, F.causa, F.equipe, F.clima, F.rdr, F.abrangencia
+      F.ativo, F.fase, F.eloret, F.eloinst, F.causa, F.equipe, F.clima, F.rdr, F.localidade
     ].concat(DIVULG_COMUNS, ATUALIZ_COMUNS, [F.obs]),
-    derivados:{ cargas:CARGAS, artigo:v => v.tipo === "CH" ? "na" : (v.tipo === "TR" ? "no" : "no(a)") },
+    derivados:{ artigo:v => v.tipo === "CH" ? "na" : (v.tipo === "TR" ? "no" : "no(a)") },
     saidas:[
       {id:"interv", nome:"Intervenção", template:[
         "!Queima de elo {artigo} {tipo} {ativo}",
         "Fase {fase} Elo Retirado {eloret} Elo Instalado {eloinst}",
-        "Penalizando {cargas} da RDR/RDU {rdr}",
-        "Localidades afetadas {cidades}",
+        "Penalizando cargas da RDR/RDU {rdr}",
+        "Localidade {localidade}",
         "Causa {causa}",
         "Equipe {equipe}",
         "Clima {clima}",
@@ -559,19 +548,18 @@ const EVENTOS = [
   },
   {
     id:"emergencial",
-    derivados:{ cargas:CARGAS },
     nome:"Abertura emergencial",
     desc:"Manobra emergencial por situação de risco em campo.",
     campos:[
       {k:"tipo", rot:"Equipamento", tipo:"select", ph:"DJ/RL/TR/CH", opcoes:["DJ","RL","TR","CH"], gatilho:true},
-      F.ativo, F.risco, F.causa, F.equipe, F.clima, F.rdr, F.abrangencia
+      F.ativo, F.risco, F.causa, F.equipe, F.clima, F.rdr, F.localidade
     ].concat(DIVULG_COMUNS, ATUALIZ_COMUNS, [F.obs]),
     saidas:[
       {id:"interv", nome:"Intervenção", template:[
         "!Abertura emergencial {tipo} {ativo}",
         "Devido situação de risco: {risco}",
-        "Penalizando {cargas} da RDR/RDU {rdr}",
-        "Localidades afetadas {cidades}",
+        "Penalizando cargas da RDR/RDU {rdr}",
+        "Localidade {localidade}",
         "Causa {causa}",
         "Equipe {equipe}",
         "Clima {clima}",
@@ -584,19 +572,18 @@ const EVENTOS = [
   },
   {
     id:"trafo",
-    derivados:{ cargas:CARGAS },
     nome:"Trafo de distribuição",
     desc:"Transformador de distribuição aberto ou desarmado. Nix assertivo não se aplica.",
     campos:[
-      F.ativo, F.situacao, F.causa, F.equipe, F.clima, F.rdr, F.abrangencia,
+      F.ativo, F.situacao, F.causa, F.equipe, F.clima, F.rdr, F.localidade,
       F.polo, F.local, F.interv, F.inicio, F.interrompidos,
-      F.afetacidades, F.cidades, F.parcial, F.normalizados, F.fim, F.obs
+      F.cidades, F.parcial, F.normalizados, F.fim, F.obs
     ],
     saidas:[
       {id:"interv", nome:"Intervenção", template:[
         "!Trafo de distribuição {situacao} TR {ativo}",
-        "Penalizando {cargas} da RDR/RDU {rdr}",
-        "Localidades afetadas {cidades}",
+        "Penalizando cargas da RDR/RDU {rdr}",
+        "Localidade {localidade}",
         "Causa {causa}",
         "Equipe {equipe}",
         "Clima {clima}",
