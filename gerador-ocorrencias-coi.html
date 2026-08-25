@@ -56,6 +56,12 @@ header .sub{
   letter-spacing:.08em;
   text-transform:uppercase;
 }
+header .ver{
+  font-family:var(--mono);
+  font-size:11px;
+  color:#6B8299;
+  letter-spacing:.04em;
+}
 header .rel{
   margin-left:auto;
   font-family:var(--mono);
@@ -338,15 +344,30 @@ footer{
   border-bottom-color:var(--orange);
   background:#fff;
 }
-.abas .marca{
-  display:inline-block;
-  width:6px;height:6px;
-  border-radius:50%;
-  background:var(--amber);
-  margin-left:6px;
-  vertical-align:middle;
+#falha-copia{
+  padding:10px 12px;
+  border-bottom:1px solid var(--line);
+  background:#FDF3E3;
 }
-.abas .marca.ok{background:var(--green)}
+#falha-copia p{
+  font-size:11.5px;
+  color:#8A5A00;
+  font-weight:600;
+  margin-bottom:6px;
+}
+#falha-copia textarea{
+  width:100%;
+  height:120px;
+  font-family:var(--mono);
+  font-size:12px;
+  padding:6px;
+  border:1px solid var(--line);
+  border-radius:2px;
+  resize:vertical;
+  background:#fff;
+  color:var(--ink);
+}
+#copiar.erro{background:#B3261E}
 .link-saida{
   font:inherit;
   font-size:11.5px;
@@ -366,6 +387,7 @@ footer{
 <header>
   <h1>Gerador de Ocorrências</h1>
   <span class="sub">COI &bull; Energisa Tocantins</span>
+  <span class="ver" id="versao"></span>
   <span class="rel" id="relogio"></span>
 </header>
 
@@ -401,6 +423,9 @@ footer{
 <script>
 "use strict";
 
+/* Versão exibida no cabeçalho. Alterar a cada publicação. */
+const VERSAO = "1.0";
+
 /* ====================================================================
    FORMATADORES
    ==================================================================== */
@@ -427,7 +452,7 @@ const RISCOS    = ["Condutor rompido ao solo","Poste abalroado","Poste danificad
 const F = {
   ativo:        {k:"ativo",        rot:"Ativo",                  tipo:"text",     ph:"XXXXX"},
   protecao:     {k:"protecao",     rot:"Proteção atuada",        tipo:"lista",    ph:"XXXXX", opcoes:PROTECOES, padrao:"N/A"},
-  icc:          {k:"icc",          rot:"ICC",                    tipo:"text",     ph:"XXXXX", padrao:"N/A"},
+  icc:          {k:"icc",          rot:"ICC (A)",                tipo:"numero",   ph:"XXXXX", padrao:"N/A", decimal:true},
   fase:         {k:"fase",         rot:"Fase",                   tipo:"select",   ph:"XXXXX", opcoes:["A","B","C","AB","AC","BC","ABC"]},
   eloret:       {k:"eloret",       rot:"Elo retirado",           tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
   eloinst:      {k:"eloinst",      rot:"Elo instalado",          tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
@@ -444,8 +469,8 @@ const F = {
   inicio:       {k:"inicio",       rot:"Horário de início",      tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
   parcial:      {k:"parcial",      rot:"Horário da parcial",     tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
   fim:          {k:"fim",          rot:"Horário final",          tipo:"datahora", ph:"XX/XX/XXXX XX:XX", fmt:FMT_DATAHORA},
-  interrompidos:{k:"interrompidos",rot:"Clientes interrompidos", tipo:"text",     ph:"XXX"},
-  normalizados: {k:"normalizados", rot:"Clientes normalizados",  tipo:"text",     ph:"XXX"},
+  interrompidos:{k:"interrompidos",rot:"Clientes interrompidos", tipo:"numero",   ph:"XXX"},
+  normalizados: {k:"normalizados", rot:"Clientes normalizados",  tipo:"numero",   ph:"XXX"},
   cidades:      {k:"cidades",      rot:"Cidades afetadas",       tipo:"text",     ph:"XXX", largo:true},
   nix:          {k:"nix",          rot:"Nix assertivo",          tipo:"lista",    ph:"XXX", opcoes:NIX,
                  cond:v => v.tipo !== "TR", padrao:"N/A"},
@@ -805,6 +830,21 @@ function montarCampos(){
         op.value = o; op.textContent = o;
         el.appendChild(op);
       });
+    } else if (c.tipo === "numero"){
+      el = document.createElement("input");
+      el.type = "text";
+      el.autocomplete = "off";
+      el.inputMode = "decimal";
+      el.placeholder = c.ph;
+      const permitido = c.decimal ? /[^0-9.,]/g : /[^0-9]/g;
+      el.addEventListener("input", () => {          // descarta o que não for número
+        const limpo = el.value.replace(permitido, "");
+        if (limpo !== el.value){
+          const pos = el.selectionStart - (el.value.length - limpo.length);
+          el.value = limpo;
+          try { el.setSelectionRange(pos, pos); } catch(e){}
+        }
+      });
     } else if (c.tipo === "hora" || c.tipo === "datahora"){
       el = document.createElement("input");
       el.type = (c.tipo === "hora") ? "time" : "datetime-local";
@@ -913,7 +953,6 @@ function whatsapp(saidaObj, v){
     }).join("\n");
   }).join("");
 }
-const pendentesDe = (saidaObj, v) => segmentos(saidaObj, v).filter(s => s.tipo === "pendente").length;
 
 /* ====================================================================
    RENDERIZAÇÃO
@@ -936,9 +975,7 @@ function render(){
     b.type = "button";
     b.setAttribute("role","tab");
     b.setAttribute("aria-selected", s === ativa ? "true" : "false");
-    const p = pendentesDe(s, v);
-    b.innerHTML = s.nome + '<span class="marca' + (p === 0 ? " ok" : "") + '"></span>';
-    b.title = p === 0 ? "Completa" : p + " campo(s) pendente(s)";
+    b.textContent = s.nome;
     b.onclick = () => { abaAtiva[atual.id] = s.id; render(); };
     abas.appendChild(b);
   });
@@ -953,7 +990,6 @@ function render(){
 
   // corpo da mensagem
   saida.innerHTML = "";
-  let pend = 0;
   segmentos(ativa, v).forEach(s => {
     const sp = document.createElement("span");
     if (s.tipo === "texto"){
@@ -969,16 +1005,15 @@ function render(){
       sp.className = "pend";
       sp.title = "Preencher: " + s.rot;
       sp.onclick = () => { if (refs[s.k]) refs[s.k].focus(); };
-      pend++;
     }
     saida.appendChild(sp);
   });
 
   camposVisiveis().forEach(c => { if (refs[c.k]) refs[c.k].classList.toggle("ok", !!get(c.k)); });
 
-  status.innerHTML = pend === 0
-    ? '<span class="ok">COMPLETO</span> ' + ativa.nome + ' pronta para envio.'
-    : '<span class="pt">' + pend + ' PENDENTE' + (pend>1?"S":"") + '</span> Clique no campo em destaque para preencher.';
+  status.innerHTML = "";
+  const bloco = document.getElementById("falha-copia");
+  if (bloco) bloco.remove();
 
   const wpp = document.createElement("button");
   wpp.type = "button";
@@ -996,6 +1031,7 @@ function render(){
    CÓPIA
    ==================================================================== */
 function confirmar(rotulo){
+  btn.classList.remove("erro");
   btn.classList.add("feito");
   btn.textContent = rotulo;
   setTimeout(render, 1600);
@@ -1035,12 +1071,35 @@ function copiarPlano(t, rotulo){
     const ta = document.createElement("textarea");
     ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
     document.body.appendChild(ta); ta.select();
-    try { document.execCommand("copy"); confirmar(rotulo); } catch(e){}
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch(e){}
     ta.remove();
+    if (ok) confirmar(rotulo); else falhaCopia(t);
   };
   if (navigator.clipboard && window.isSecureContext){
     navigator.clipboard.writeText(t).then(() => confirmar(rotulo)).catch(legado);
   } else { legado(); }
+}
+
+/* Nenhum caminho de copia funcionou: mostra o texto para copia manual
+   em vez de deixar o operador achar que copiou. */
+function falhaCopia(t){
+  btn.classList.remove("feito");
+  btn.classList.add("erro");
+  btn.textContent = "Falha ao copiar";
+
+  let bloco = document.getElementById("falha-copia");
+  if (!bloco){
+    bloco = document.createElement("div");
+    bloco.id = "falha-copia";
+    bloco.innerHTML = "<p>O navegador bloqueou a copia. Selecione o texto abaixo e use Ctrl+C.</p>";
+    bloco.appendChild(document.createElement("textarea"));
+    status.parentNode.insertBefore(bloco, btn);
+  }
+  const ta = bloco.querySelector("textarea");
+  ta.value = t;
+  ta.focus();
+  ta.select();
 }
 function copiar(){
   const v = contexto(), a = saidaAtiva();
@@ -1082,6 +1141,8 @@ function relogio(){
   document.getElementById("relogio").textContent =
     p(d.getDate()) + "/" + p(d.getMonth()+1) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
 }
+document.getElementById("versao").textContent = "v" + VERSAO;
+
 relogio();
 setInterval(relogio, 20000);
 
