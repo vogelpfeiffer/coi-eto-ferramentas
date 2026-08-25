@@ -396,7 +396,7 @@ footer{
   </section>
 </main>
 
-<footer>App desenvolvido por Rafael Pereira Marques</footer>
+<footer>App Desenvolvido por Rafael Marques - Técnico de Operação do Sistema I</footer>
 
 <script>
 "use strict";
@@ -434,6 +434,7 @@ const F = {
   risco:        {k:"risco",        rot:"Situação de risco",      tipo:"lista",    ph:"XXXXX", opcoes:RISCOS, largo:true},
   rdr:          {k:"rdr",          rot:"RDR / RDU",              tipo:"text",     ph:"XXXXX"},
   localidade:   {k:"localidade",   rot:"Localidade",             tipo:"text",     ph:"XXXXX"},
+  quadra:       {k:"quadra",       rot:"Quadra",                 tipo:"text",     ph:"XXX"},
   clima:        {k:"clima",        rot:"Clima",                  tipo:"lista",    ph:"XXXXX", opcoes:CLIMAS},
   causa:        {k:"causa",        rot:"Causa",                  tipo:"lista",    ph:"XXXXX", opcoes:CAUSAS},
   equipe:       {k:"equipe",       rot:"Equipe",                 tipo:"text",     ph:"XXXXX"},
@@ -489,6 +490,15 @@ function final(linhasElemento){
              "Observação: {obs}"]).join("\n");
 }
 
+/* Remove do template as linhas de um campo que nao se aplica ao evento. */
+function sem(template, chave){
+  return template.split("\n").filter(l => l.indexOf("{"+chave+"}") < 0).join("\n");
+}
+/* Copia a definicao de um campo trocando alguma propriedade so neste evento. */
+function variante(campo, extras){
+  return Object.assign({}, campo, extras);
+}
+
 const DIVULG_COMUNS = [F.polo,F.local,F.interv,F.inicio,F.interrompidos,F.cidades,F.nix];
 const ATUALIZ_COMUNS = [F.parcial,F.normalizados,F.fim];
 
@@ -527,8 +537,8 @@ const EVENTOS = [
     desc:"Atuação de elo fusível em transformador ou chave de derivação.",
     campos:[
       {k:"tipo", rot:"Equipamento", tipo:"select", ph:"TR/CH", opcoes:["TR","CH"], gatilho:true},
-      F.ativo, F.fase, F.eloret, F.eloinst, F.causa, F.equipe, F.clima, F.rdr, F.localidade
-    ].concat(DIVULG_COMUNS, ATUALIZ_COMUNS, [F.obs]),
+      F.ativo, F.fase, F.eloret, F.eloinst, F.causa, F.equipe, F.clima, F.rdr, F.localidade, F.quadra
+    ].concat(DIVULG_COMUNS.filter(c => c.k !== "nix"), ATUALIZ_COMUNS, [F.obs]),
     derivados:{ artigo:v => v.tipo === "CH" ? "na" : (v.tipo === "TR" ? "no" : "no(a)") },
     saidas:[
       {id:"interv", nome:"Intervenção", template:[
@@ -536,14 +546,15 @@ const EVENTOS = [
         "Fase {fase} Elo Retirado {eloret} Elo Instalado {eloinst}",
         "Penalizando cargas da RDR/RDU {rdr}",
         "Localidade {localidade}",
+        "Quadra {quadra}",
         "Causa {causa}",
         "Equipe {equipe}",
         "Clima {clima}",
         "OBS: {obs}"
       ].join("\n")},
-      {id:"divulg",  nome:"Divulgação",  template:divulgacao(["Elemento desarmado: {tipo} {ativo}","Fase {fase} - elo retirado {eloret}, elo instalado {eloinst}"], false)},
-      {id:"parcial", nome:"Parcial",     template:parcial(["Elemento desarmado: {tipo} {ativo}"])},
-      {id:"final",   nome:"Final",       template:final(["Elemento desarmado: {tipo} {ativo}"])}
+      {id:"divulg",  nome:"Divulgação",  template:sem(divulgacao(["Elemento desarmado: {tipo} {ativo}","Quadra: {quadra}","Fase {fase} - elo retirado {eloret}, elo instalado {eloinst}"], false), "nix")},
+      {id:"parcial", nome:"Parcial",     template:sem(parcial(["Elemento desarmado: {tipo} {ativo}","Quadra: {quadra}"]), "nix")},
+      {id:"final",   nome:"Final",       template:sem(final(["Elemento desarmado: {tipo} {ativo}","Quadra: {quadra}"]), "nix")}
     ]
   },
   {
@@ -553,7 +564,7 @@ const EVENTOS = [
     campos:[
       {k:"tipo", rot:"Equipamento", tipo:"select", ph:"DJ/RL/TR/CH", opcoes:["DJ","RL","TR","CH"], gatilho:true},
       F.ativo, F.risco, F.causa, F.equipe, F.clima, F.rdr, F.localidade
-    ].concat(DIVULG_COMUNS, ATUALIZ_COMUNS, [F.obs]),
+    ].concat(DIVULG_COMUNS.map(c => c.k === "nix" ? variante(c, {cond:v => v.tipo === "CH"}) : c), ATUALIZ_COMUNS, [F.obs]),
     saidas:[
       {id:"interv", nome:"Intervenção", template:[
         "!Abertura emergencial {tipo} {ativo}",
@@ -575,15 +586,16 @@ const EVENTOS = [
     nome:"Trafo de distribuição",
     desc:"Transformador de distribuição aberto ou desarmado. Nix assertivo não se aplica.",
     campos:[
-      F.ativo, F.situacao, F.causa, F.equipe, F.clima, F.rdr, F.localidade,
+      F.ativo, F.situacao, F.causa, F.equipe, F.clima, F.rdr, F.localidade, F.quadra,
       F.polo, F.local, F.interv, F.inicio, F.interrompidos,
-      F.cidades, F.parcial, F.normalizados, F.fim, F.obs
+      F.parcial, F.normalizados, F.fim, F.obs
     ],
     saidas:[
       {id:"interv", nome:"Intervenção", template:[
         "!Trafo de distribuição {situacao} TR {ativo}",
         "Penalizando cargas da RDR/RDU {rdr}",
         "Localidade {localidade}",
+        "Quadra {quadra}",
         "Causa {causa}",
         "Equipe {equipe}",
         "Clima {clima}",
@@ -594,13 +606,13 @@ const EVENTOS = [
         "",
         "Local: {local}",
         "Elemento desarmado: TR {ativo}",
+        "Quadra: {quadra}",
         "Situação: {situacao}",
         "Interv/O.S: {interv}",
         "Horário de Início: {inicio}",
         "Quantidade de Clientes Interrompidos: {interrompidos} UC(s)",
         "Causa: {causa}",
         "Equipe: {equipe}",
-        "Cidades afetadas: {cidades}",
         "Observação: {obs}"
       ].join("\n")},
       {id:"parcial", nome:"Parcial", template:[
@@ -608,6 +620,7 @@ const EVENTOS = [
         "",
         "Local: {local}",
         "Elemento desarmado: TR {ativo}",
+        "Quadra: {quadra}",
         "Interv/O.S: {interv}",
         "Horário de Início: {inicio}",
         "Horário da Parcial: {parcial}",
@@ -620,6 +633,7 @@ const EVENTOS = [
         "",
         "Local: {local}",
         "Elemento desarmado: TR {ativo}",
+        "Quadra: {quadra}",
         "Interv/O.S: {interv}",
         "Horário de Início: {inicio}",
         "Horário Final: {fim}",
