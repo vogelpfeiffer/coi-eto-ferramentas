@@ -426,8 +426,8 @@ const RISCOS    = ["Condutor rompido ao solo","Poste abalroado","Poste danificad
    ==================================================================== */
 const F = {
   ativo:        {k:"ativo",        rot:"Ativo",                  tipo:"text",     ph:"XXXXX"},
-  protecao:     {k:"protecao",     rot:"Proteção atuada",        tipo:"lista",    ph:"XXXXX", opcoes:PROTECOES},
-  icc:          {k:"icc",          rot:"ICC",                    tipo:"text",     ph:"XXXXX"},
+  protecao:     {k:"protecao",     rot:"Proteção atuada",        tipo:"lista",    ph:"XXXXX", opcoes:PROTECOES, padrao:"N/A"},
+  icc:          {k:"icc",          rot:"ICC",                    tipo:"text",     ph:"XXXXX", padrao:"N/A"},
   fase:         {k:"fase",         rot:"Fase",                   tipo:"select",   ph:"XXXXX", opcoes:["A","B","C","AB","AC","BC","ABC"]},
   eloret:       {k:"eloret",       rot:"Elo retirado",           tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
   eloinst:      {k:"eloinst",      rot:"Elo instalado",          tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
@@ -447,7 +447,7 @@ const F = {
   normalizados: {k:"normalizados", rot:"Clientes normalizados",  tipo:"text",     ph:"XXX"},
   cidades:      {k:"cidades",      rot:"Cidades afetadas",       tipo:"text",     ph:"XXX", largo:true},
   nix:          {k:"nix",          rot:"Nix assertivo",          tipo:"lista",    ph:"XXX", opcoes:NIX,
-                 cond:v => v.tipo !== "TR"},
+                 cond:v => v.tipo !== "TR", padrao:"N/A"},
   situacao:     {k:"situacao",     rot:"Situação",               tipo:"select",   ph:"XXXXX", opcoes:["Aberto","Desarmado"]},
   obs:          {k:"obs",          rot:"Observação",             tipo:"text",     ph:"XXXXX", largo:true}
 };
@@ -837,7 +837,9 @@ function contexto(){
   const cru = brutos();
   const v = {};
   atual.campos.forEach(c => {
-    const bruto = (c.cond && !c.cond(cru)) ? "" : cru[c.k];
+    const oculto = c.cond && !c.cond(cru);
+    let bruto = oculto ? "" : cru[c.k];
+    if (!oculto && !bruto && c.padrao) bruto = c.padrao;   // ICC, Proteções e Nix saem como N/A
     v[c.k] = (c.fmt && bruto) ? c.fmt(bruto) : bruto;
   });
   if (atual.derivados){
