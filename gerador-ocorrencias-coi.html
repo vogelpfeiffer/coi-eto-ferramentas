@@ -424,7 +424,7 @@ footer{
 "use strict";
 
 /* Versão exibida no cabeçalho. Alterar a cada publicação. */
-const VERSAO = "1.01";
+const VERSAO = "1.02";
 
 /* ====================================================================
    FORMATADORES
@@ -452,7 +452,7 @@ const RISCOS    = ["Condutor rompido ao solo","Poste abalroado","Poste danificad
 const F = {
   ativo:        {k:"ativo",        rot:"Ativo",                  tipo:"text",     ph:"XXXXX"},
   protecao:     {k:"protecao",     rot:"Proteção atuada",        tipo:"lista",    ph:"XXXXX", opcoes:PROTECOES, padrao:"N/A"},
-  icc:          {k:"icc",          rot:"ICC (A)",                tipo:"numero",   ph:"XXXXX", padrao:"N/A", decimal:true},
+  icc:          {k:"icc",          rot:"ICC",                    tipo:"text",     ph:"XXXXX", padrao:"N/A"},
   fase:         {k:"fase",         rot:"Fase",                   tipo:"select",   ph:"XXXXX", opcoes:["A","B","C","AB","AC","BC","ABC"]},
   eloret:       {k:"eloret",       rot:"Elo retirado",           tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
   eloinst:      {k:"eloinst",      rot:"Elo instalado",          tipo:"lista",    ph:"XXXXX", opcoes:ELOS},
@@ -478,6 +478,26 @@ const F = {
   nix:          {k:"nix",          rot:"Nix assertivo",          tipo:"lista",    ph:"XXX", opcoes:NIX,
                  cond:v => v.tipo !== "TR", padrao:"N/A"},
   situacao:     {k:"situacao",     rot:"Situação",               tipo:"select",   ph:"XXXXX", opcoes:["Aberto","Desarmado"]},
+  qtd:          {k:"qtd",          rot:"Quantas intervenções",    tipo:"select",   ph:"X", opcoes:["2","3"],
+                 gatilho:true, sempre:true},
+  interv1:      {k:"interv1",      rot:"Intervenção 1",           tipo:"text",     ph:"XXXXX"},
+  interv2:      {k:"interv2",      rot:"Intervenção 2",           tipo:"text",     ph:"XXXXX"},
+  interv3:      {k:"interv3",      rot:"Intervenção 3",           tipo:"text",     ph:"XXXXX",
+                 cond:v => v.qtd === "3", sempre:true},
+  motivoacesso: {k:"motivoacesso", rot:"Motivo da falta de acesso", tipo:"text",   ph:"XXXXX", largo:true},
+  acesso:       {k:"acesso",       rot:"Como o acesso foi obtido",  tipo:"text",   ph:"XXXXX", largo:true},
+  troca:        {k:"troca",        rot:"Troca de",                tipo:"text",     ph:"XXXXX"},
+  substituicao: {k:"substituicao", rot:"Substituição de",         tipo:"text",     ph:"XXXXX"},
+  equipes:      {k:"equipes",      rot:"Equipes envolvidas",      tipo:"text",     ph:"XXXXX", largo:true},
+  rota:         {k:"rota",         rot:"Foi tentada rota alternativa?", tipo:"select", ph:"", opcoes:["SIM","NÃO"], controla:"rotaTxt"},
+  rotamotivo:   {k:"rotamotivo",   rot:"Por que não foi tentada rota alternativa?", tipo:"text", ph:"XXXXX", largo:true,
+                 controla:"rotaTxt", cond:v => v.rota === "NÃO"},
+  supervisor:   {k:"supervisor",   rot:"Supervisor do polo ciente?", tipo:"select", ph:"", opcoes:["SIM","NÃO"], controla:"supTxt"},
+  supmotivo:    {k:"supmotivo",    rot:"Por que o supervisor não foi acionado?", tipo:"text", ph:"XXXXX", largo:true,
+                 controla:"supTxt", cond:v => v.supervisor === "NÃO"},
+  fotos:        {k:"fotos",        rot:"Fotos da falta de acesso? (mínimo 5 ângulos)", tipo:"select", ph:"", opcoes:["SIM","NÃO"], controla:"fotosTxt"},
+  fotosmotivo:  {k:"fotosmotivo",  rot:"Por que não há fotos?",   tipo:"text",     ph:"XXXXX", largo:true,
+                 controla:"fotosTxt", cond:v => v.fotos === "NÃO"},
   obs:          {k:"obs",          rot:"Observação",             tipo:"text",     ph:"XXXXX", largo:true}
 };
 
@@ -526,7 +546,7 @@ const EVENTOS = [
     saidas:[
       {id:"interv", nome:"Intervenção", template:[
         "!Queima de elo {artigo} {tipo} {ativo}",
-        "Fase {fase} Elo Retirado {eloret} Elo Instalado {eloinst}",
+        "Fase {fase}[ Elo Retirado {eloret}][ Elo Instalado {eloinst}]",
         "Penalizando cargas da RDR/RDU {rdr}",
         "Localidade {localidade}",
         "Quadra {quadra}",
@@ -535,7 +555,7 @@ const EVENTOS = [
         "Clima {clima}",
         "OBS: {obs}"
       ].join("\n")},
-      {id:"divulg",  nome:"Divulgação",  template:sem(divulgacao(["Elemento desarmado: {tipo} {ativo}","Quadra: {quadra}","Fase {fase} - elo retirado {eloret}, elo instalado {eloinst}"], false), "nix")
+      {id:"divulg",  nome:"Divulgação",  template:sem(divulgacao(["Elemento desarmado: {tipo} {ativo}","Quadra: {quadra}","Fase {fase}[ - elo retirado {eloret}][, elo instalado {eloinst}]"], false), "nix")
         .replace("Causa: {causa}",
                  "Clientes normalizados no primeiro momento: {normclientes} UC(s)\n"
                + "Horário da normalização: {normhora}\n"
@@ -588,6 +608,50 @@ const EVENTOS = [
     ]
   },
   {
+    id:"acesso",
+    nome:"Falta de acesso",
+    desc:"Rota alternativa, ciência do supervisor e fotos são obrigatórias antes de seguir com o fluxo.",
+    campos:[
+      F.qtd, F.interv1, F.interv2, F.interv3, F.localidade, F.equipes,
+      F.motivoacesso, F.acesso, F.troca, F.substituicao,
+      F.rota, F.rotamotivo, F.supervisor, F.supmotivo, F.fotos, F.fotosmotivo
+    ],
+    derivados:{
+      // intervenção que antecede a última, conforme o total informado
+      anterior:v => v.qtd === "3" ? (v.interv2 || "XXXXX") : (v.interv1 || "XXXXX"),
+      intervencoes:v => [v.interv1, v.interv2, v.qtd === "3" ? v.interv3 : ""]
+                          .filter(x => !!x).join("/") || "XXXXX",
+      rotaTxt:v   => !v.rota       ? "XXX" : v.rota       + (v.rota === "NÃO"       && v.rotamotivo  ? " - " + v.rotamotivo  : ""),
+      supTxt:v    => !v.supervisor ? "XXX" : v.supervisor + (v.supervisor === "NÃO" && v.supmotivo   ? " - " + v.supmotivo   : ""),
+      fotosTxt:v  => !v.fotos      ? "XXX" : v.fotos      + (v.fotos === "NÃO"      && v.fotosmotivo ? " - " + v.fotosmotivo : "")
+    },
+    saidas:[
+      {id:"int1", nome:"Intervenção 1", padrao:true, template:[
+        "!Local com falta de acesso devido {motivoacesso}.",
+        "Atendimento continua na intervenção {interv2}."
+      ].join("\n")},
+      {id:"int2", nome:"Intervenção 2", cond:v => v.qtd === "3", template:[
+        "!Continuação da intervenção {interv1}, local segue sem acesso: {motivoacesso}.",
+        "Atendimento continua na intervenção {interv3}."
+      ].join("\n")},
+      {id:"intfinal", nome:"Intervenção final", template:[
+        "!Continuação da intervenção {anterior} após conseguir acesso ao local: {acesso}.",
+        "Clientes restabelecidos[ após troca de {troca}][ e substituição de {substituicao}]."
+      ].join("\n")},
+      {id:"email", nome:"E-mail", padrao:true, template:[
+        "!Assunto: Intervenção {interv1} – Local sem acesso, localidade {localidade}",
+        "",
+        "!Intervenções: {intervencoes}",
+        "!Localidade: {localidade}",
+        "!Equipes envolvidas: {equipes}",
+        "!Motivo da falta de acesso: {motivoacesso}",
+        "!Foi tentado rota alternativa? {rotaTxt}",
+        "!Supervisor do polo ciente? {supTxt}",
+        "!Equipe tirou fotos evidenciando falta de acesso? {fotosTxt}"
+      ].join("\n")}
+    ]
+  },
+  {
     id:"cos",
     nome:"Ocorrência em subestação - COS",
     desc:"Comunicado de desarme de disjuntor de transformador de subestação.",
@@ -631,15 +695,22 @@ const marcadas = {};     // marcadas[evento] = [idsDeSaida]
 const abaAtiva = {};     // abaAtiva[evento] = idDeSaida
 EVENTOS.forEach(e => {
   valores[e.id]  = {};
-  marcadas[e.id] = e.saidas.slice(0, Math.min(2, e.saidas.length)).map(s => s.id);
+  const pref = e.saidas.filter(s => s.padrao);
+  marcadas[e.id] = (pref.length ? pref : e.saidas.slice(0, Math.min(2, e.saidas.length))).map(s => s.id);
   abaAtiva[e.id] = marcadas[e.id][0];
 });
 let atual = EVENTOS[0];
 
 const get = k => valores[atual.id][k] || "";
 const set = (k,v) => { valores[atual.id][k] = v; };
-const selecionadas = () => atual.saidas.filter(s => marcadas[atual.id].indexOf(s.id) >= 0);
-const saidaAtiva   = () => atual.saidas.find(s => s.id === abaAtiva[atual.id]) || selecionadas()[0];
+/* Saidas que existem para o preenchimento atual (ex.: a 2a intervencao
+   so faz sentido quando o operador informa 3 intervencoes). */
+const disponiveis = () => atual.saidas.filter(s => !s.cond || s.cond(brutos()));
+const selecionadas = () => {
+  const d = disponiveis().filter(s => marcadas[atual.id].indexOf(s.id) >= 0);
+  return d.length ? d : disponiveis().slice(0,1);
+};
+const saidaAtiva   = () => selecionadas().find(s => s.id === abaAtiva[atual.id]) || selecionadas()[0];
 
 /* ====================================================================
    NAVEGAÇÃO DE EVENTOS
@@ -673,8 +744,9 @@ const chips = document.getElementById("chips");
 
 function montarChips(){
   chips.querySelectorAll(".chip").forEach(c => c.remove());
-  chips.parentNode.querySelector(".chips").style.display = atual.saidas.length > 1 ? "flex" : "none";
-  atual.saidas.forEach(s => {
+  const lista = disponiveis();
+  chips.parentNode.querySelector(".chips").style.display = lista.length > 1 ? "flex" : "none";
+  lista.forEach(s => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "chip";
@@ -720,7 +792,7 @@ function camposVisiveis(){
   const v = brutos();
   return atual.campos.filter(c => {
     const alvo = c.controla || c.k;          // campo de controle segue o campo que comanda
-    const usado = sel.some(s => s.template.indexOf("{"+alvo+"}") >= 0);
+    const usado = c.sempre || sel.some(s => s.template.indexOf("{"+alvo+"}") >= 0);
     return usado && (!c.cond || c.cond(v));
   });
 }
@@ -792,7 +864,7 @@ function montarCampos(){
     const gatilho = !!c.controla || !!c.gatilho;   // muda quais campos aparecem
     const atualizar = () => {
       set(c.k, el.value.trim());
-      if (gatilho) montarCampos();                 // reconstrói a lista de campos
+      if (gatilho){ montarChips(); montarCampos(); }  // reconstrói mensagens e campos
       render();
     };
     el.addEventListener("input", atualizar);
@@ -822,22 +894,34 @@ function contexto(){
   return v;
 }
 
+/* Trecho entre colchetes só entra se todos os seus campos estiverem
+   preenchidos. Serve para partes opcionais no meio de uma linha. */
+function grupos(linha, v){
+  return linha.replace(/\[([^\]]*)\]/g, (todo, dentro) => {
+    const chaves = (dentro.match(/\{([a-zA-Z]+)\}/g) || [])
+      .map(m => m.slice(1,-1))
+      .filter(k => atual.campos.some(c => c.k === k));
+    if (!chaves.length) return dentro;
+    return chaves.every(k => !!v[k]) ? dentro : "";
+  });
+}
+
 /* Uma linha só entra na mensagem se ao menos um dos seus campos estiver
    preenchido. Linhas iniciadas por "!" são fixas e sempre aparecem. */
 function corpo(saidaObj, v){
   return saidaObj.template.split("\n").filter(linha => {
     if (linha.charAt(0) === "!") return true;
-    const chaves = (linha.match(/\{([a-zA-Z]+)\}/g) || [])
+    const chaves = (linha.match(/\{([a-zA-Z0-9]+)\}/g) || [])
       .map(m => m.slice(1,-1))
       .filter(k => atual.campos.some(c => c.k === k));
     if (!chaves.length) return true;
     return chaves.some(k => !!v[k]);
-  }).map(l => l.charAt(0) === "!" ? l.slice(1) : l).join("\n");
+  }).map(l => grupos(l.charAt(0) === "!" ? l.slice(1) : l, v)).join("\n");
 }
 
 function segmentos(saidaObj, v){
-  return corpo(saidaObj, v).split(/(\{[a-zA-Z]+\})/g).filter(s => s !== "").map(s => {
-    const m = s.match(/^\{([a-zA-Z]+)\}$/);
+  return corpo(saidaObj, v).split(/(\{[a-zA-Z0-9]+\})/g).filter(s => s !== "").map(s => {
+    const m = s.match(/^\{([a-zA-Z0-9]+)\}$/);
     if (!m) return {tipo:"texto", txt:s};
     const chave = m[1];
     const campo = atual.campos.find(c => c.k === chave);
